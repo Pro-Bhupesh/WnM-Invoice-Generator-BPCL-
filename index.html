@@ -708,7 +708,7 @@ img { max-width: 100%; height: auto; }
       <div class="field">
         <label>Dealer Invoice Number</label>
         <input type="text" id="invNo" placeholder="e.g. 156576/WM0001" autocomplete="off">
-        <span class="hint">Invoice No auto-filled from CC · Name/VC/GSTIN auto-filled from mapping — all editable</span>
+        <span class="hint">Auto-generated from CC + Stamping Date + Cert No — edit freely</span>
       </div>
       <div class="field" id="fc-id">
         <label>Dealer Invoice Date <em>*</em></label>
@@ -740,13 +740,13 @@ img { max-width: 100%; height: auto; }
     <div class="grid3">
       <div class="field" id="fc-sd">
         <label>Stamping Date <em>*</em></label>
-        <input type="date" id="stampDate">
+        <input type="date" id="stampDate" oninput="autoInvNo()">
         <span class="errmsg">Required</span>
       </div>
       <div class="field" id="fc-wn">
         <label>W&amp;M Certificate No. <em>*</em></label>
         <input type="text" id="wmCertNo" placeholder="e.g. 91202502714443"
-               inputmode="numeric" autocomplete="off">
+               inputmode="numeric" autocomplete="off" oninput="autoInvNo()">
         <span class="errmsg">Required</span>
       </div>
       <div class="field" id="fc-wd">
@@ -866,8 +866,8 @@ img { max-width: 100%; height: auto; }
         <div class="upload-box" id="ub-cert" onclick="$('certFile').click()" role="button" tabindex="0"
              onkeydown="if(event.key==='Enter'||event.key===' ')$('certFile').click()">
           <div class="upload-icon">&#128196;</div>
-          <div class="upload-text">Tap to upload<br><span>JPG, PNG &mdash; Certificate page</span></div>
-          <input type="file" id="certFile" accept="image/*" style="display:none"
+          <div class="upload-text">Tap to capture or upload<br><span>Camera · JPG, PNG &mdash; Certificate page</span></div>
+          <input type="file" id="certFile" accept="image/*" capture="environment" style="display:none"
                  onchange="handleUpload('certFile','ub-cert','cert-preview')">
         </div>
         <div id="cert-preview" class="img-preview" style="display:none;">
@@ -881,8 +881,8 @@ img { max-width: 100%; height: auto; }
         <div class="upload-box" id="ub-rcpt" onclick="$('rcptFile').click()" role="button" tabindex="0"
              onkeydown="if(event.key==='Enter'||event.key===' ')$('rcptFile').click()">
           <div class="upload-icon">&#129534;</div>
-          <div class="upload-text">Tap to upload<br><span>JPG, PNG &mdash; Payment receipt</span></div>
-          <input type="file" id="rcptFile" accept="image/*" style="display:none"
+          <div class="upload-text">Tap to capture or upload<br><span>Camera · JPG, PNG &mdash; Payment receipt</span></div>
+          <input type="file" id="rcptFile" accept="image/*" capture="environment" style="display:none"
                  onchange="handleUpload('rcptFile','ub-rcpt','rcpt-preview')">
         </div>
         <div id="rcpt-preview" class="img-preview" style="display:none;">
@@ -970,10 +970,29 @@ function showAutoFillBadge(found) {
 
 let N = 0;
 
-// ── Auto invoice number ───────────────────────────────────────
+// ── Auto invoice number (unique 6-digit suffix) ───────────────
+// Formula: CC + stamping date (DDMMYY) + last 2 digits of cert no → hash → 6 digits
+function genInvSuffix(cc, stampDate, certNo) {
+  // Build seed string: CC + DDMMYY + last4 of cert
+  const dateStr = stampDate ? stampDate.replace(/-/g,'').slice(2) : '000000'; // YYMMDD
+  const certStr = certNo ? certNo.replace(/\D/g,'').slice(-4).padStart(4,'0') : '0000';
+  const seed = (cc || '000000') + dateStr + certStr;
+  // Simple deterministic hash → 6-digit number
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  }
+  const sixDigit = String(Math.abs(h) % 900000 + 100000); // always 100000–999999
+  return sixDigit;
+}
+
 function autoInvNo() {
-  const cc = $('custCode').value.trim();
-  $('invNo').value = cc ? cc + '/WM0001' : '';
+  const cc       = ($('custCode').value || '').trim();
+  const stampDate= ($('stampDate')  ? $('stampDate').value  : '') || '';
+  const certNo   = ($('wmCertNo')   ? $('wmCertNo').value   : '') || '';
+  if (!cc) { $('invNo').value = ''; return; }
+  const suffix = genInvSuffix(cc, stampDate, certNo);
+  $('invNo').value = cc + '/WM' + suffix;
 }
 
 // ── MPD rows ─────────────────────────────────────────────────
@@ -1296,7 +1315,7 @@ function removeImg(inputId, boxId, previewId) {
   $(boxId).classList.remove('has-file');
   const isRcpt = inputId === 'rcptFile';
   $(boxId).querySelector('.upload-text').innerHTML =
-    `Click to upload<br><span>${isRcpt ? 'JPG, PNG — Payment receipt' : 'JPG, PNG — Certificate page'}</span>`;
+    `Tap to capture or upload<br><span>${isRcpt ? 'Camera · JPG, PNG — Payment receipt' : 'Camera · JPG, PNG — Certificate page'}</span>`;
 }
 
 function getImgDataURL(imgId) {
